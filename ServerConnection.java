@@ -1,0 +1,37 @@
+/*
+ * Click nbfs://nbhost/SystemFileSystem/Templates/Licenses/license-default.txt to change this license
+ * Click nbfs://nbhost/SystemFileSystem/Templates/Classes/Class.java to edit this template
+ */
+package com.mycompany.project;
+
+import java.io.BufferedReader;
+import java.io.IOException;
+import java.io.InputStreamReader;
+import java.io.PrintWriter;
+import java.net.Socket;
+import java.util.logging.Level;
+import java.util.logging.Logger;
+
+class ServerConnection implements Runnable {
+    private Socket server;
+    private BufferedReader in;
+    private PrintWriter out;
+
+    public ServerConnection(Socket s) throws IOException {
+        server = s;
+        in = new BufferedReader(new InputStreamReader(server.getInputStream()));
+        out = new PrintWriter(server.getOutputStream(), true);
+    }
+
+    @Override
+    public void run() {
+        try {
+            String serverResponse;
+            while ((serverResponse = in.readLine()) != null) {
+                System.out.println("Server says: " + serverResponse);
+            }
+        } catch (IOException ex) {
+            ex.printStackTrace();
+        }
+    }
+}
