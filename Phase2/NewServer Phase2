@@ -1,0 +1,147 @@
+import java.io.IOException;
+import java.net.ServerSocket;
+import java.net.Socket;
+import java.util.*;
+
+public class NewServer {
+    public static List<NewClient> connectedPlayers = new ArrayList<>();
+    private static List<List<NewClient>> gameRooms = new ArrayList<>();
+    private static final int MAX_PLAYERS_PER_ROOM = 4;
+
+    private static final List<String> questions = Arrays.asList(
+        "الفيلة تخاف من النمل أكثر من الفئران.",
+        "الطيور تنام أثناء الطيران أحياناً.",
+        "الإنسان يمكنه العيش بدون نوم لمدة شهر.",
+        "السمك يضحك إذا دغدغته.",
+        "الحلزون يمكنه النوم لمدة 3 سنوات متواصلة."
+    );
+
+    private static final List<String> correctAnswers = Arrays.asList(
+        "صح",
+        "صح",
+        "خطأ",
+        "خطأ",
+        "صح"
+    );
+
+    public static void main(String[] args) throws IOException {
+        ServerSocket serverSocket = new ServerSocket(5000);
+        System.out.println("Server started...");
+
+        while (true) {
+            Socket clientSocket = serverSocket.accept();
+            NewClient clientThread = new NewClient(clientSocket);
+            handlePlayerConnection(clientThread);
+        }
+    }
+
+    public static synchronized void handlePlayerConnection(NewClient client) {
+        connectedPlayers.add(client);
+        new Thread(client).start();
+        client.sendMessage("CONNECTED " + client.getUsername());
+        sendConnectedPlayersListToAll();
+    }
+
+    public static synchronized void handlePlayRequest(NewClient client) {
+        for (List<NewClient> room : gameRooms) {
+            if (room.size() < MAX_PLAYERS_PER_ROOM) {
+                room.add(client);
+                sendWaitingRoomListToAll(room);
+                if (room.size() == 2) {
+                    startCountdownTimer(room);
+                }
+                return;
+            }
+        }
+        List<NewClient> newRoom = new ArrayList<>();
+        newRoom.add(client);
+        gameRooms.add(newRoom);
+        sendWaitingRoomListToAll(newRoom);
+    }
+
+    private static void updateWaitingRoomTimer(List<NewClient> room, int secondsLeft) {
+        for (NewClient player : room) {
+            player.sendMessage("TIMER: " + secondsLeft);
+        }
+    }
+
+    private static void startCountdownTimer(List<NewClient> room) {
+        new Thread(() -> {
+            try {
+                while (room.size() > 2) {
+                    Thread.sleep(1000);
+                }
+                for (int i = 30; i >= 0; i--) {
+                    updateWaitingRoomTimer(room, i);
+                    Thread.sleep(1000);
+                }
+                if (room.size() >= 2) {
+                    for (NewClient player : room) {
+                        player.startGame(new ArrayList<>(questions), new ArrayList<>(correctAnswers));
+                    }
+                    gameRooms.remove(room);
+                }
+            } catch (InterruptedException e) {
+                e.printStackTrace();
+            }
+        }).start();
+    }
+
+    public static synchronized void sendConnectedPlayersListToAll() {
+        StringBuilder sb = new StringBuilder("PLAYERS: ");
+        for (NewClient player : connectedPlayers) {
+            sb.append(player.getUsername()).append(",");
+        }
+        if (sb.length() > 0) sb.setLength(sb.length() - 1);
+        String msg = sb.toString();
+        for (NewClient player : connectedPlayers) {
+            player.sendMessage(msg);
+        }
+    }
+
+    public static synchronized void sendWaitingRoomListToAll(List<NewClient> room) {
+        StringBuilder sb = new StringBuilder("WAITING ROOM: ");
+        for (NewClient player : room) {
+            sb.append(player.getUsername()).append(",");
+        }
+        if (sb.length() > 0) sb.setLength(sb.length() - 1);
+        String msg = sb.toString();
+        for (NewClient player : room) {
+            player.sendMessage(msg);
+        }
+    }
+
+    public static synchronized void removePlayer(NewClient client) {
+        connectedPlayers.remove(client);
+        List<List<NewClient>> roomsToRemove = new ArrayList<>();
+        for (List<NewClient> room : gameRooms) {
+            room.remove(client);
+            if (room.isEmpty()) {
+                roomsToRemove.add(room);
+            } else {
+                sendWaitingRoomListToAll(room);
+            }
+        }
+        gameRooms.removeAll(roomsToRemove);
+        notifyAllPlayers("Player left: " + client.getUsername());
+        sendConnectedPlayersListToAll();
+    }
+
+    public static void notifyAllPlayers(String message) {
+        for (NewClient player : connectedPlayers) {
+            player.sendMessage(message);
+        }
+    }
+
+    public static void sendScoresToAll() {
+        StringBuilder sb = new StringBuilder("SCORES: ");
+        for (NewClient player : connectedPlayers) {
+            sb.append(player.getUsername()).append(": ").append(player.getScore()).append(", ");
+        }
+        if (sb.length() > 0) sb.setLength(sb.length() - 2);
+        String msg = sb.toString();
+        for (NewClient player : connectedPlayers) {
+            player.sendMessage(msg);
+        }
+    }
+}
