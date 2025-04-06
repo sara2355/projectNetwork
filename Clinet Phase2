@@ -1,0 +1,256 @@
+import java.io.BufferedReader;
+import java.io.IOException;
+import java.io.InputStreamReader;
+import java.io.PrintWriter;
+import java.net.Socket;
+import javax.swing.*;
+import java.awt.*;
+
+public class Client {
+    private static final String SERVER_IP = "192.168.8.149"; 
+    private static final int SERVER_PORT = 5000;
+
+    private JFrame startFrame, loginFrame, playersFrame, waitingRoomFrame, questionFrame;
+    private DefaultListModel<String> playerListModel, waitingRoomListModel;
+    private JList<String> playerList, waitingRoomList;
+    private PrintWriter out;
+    private BufferedReader in;
+    private String username;
+    private JTextArea scoresArea; // لعرض السكور لجميع اللاعبين
+
+    public Client() {
+        showStartWindow();
+    }
+
+    private void showStartWindow() {
+        startFrame = new JFrame("ابدأ اللعبة");
+        startFrame.setSize(300, 200);
+        startFrame.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
+        startFrame.setLayout(new BorderLayout());
+
+        JLabel welcomeLabel = new JLabel("مرحبًا بك في لعبة خُزعبَلَة!", SwingConstants.CENTER);
+        welcomeLabel.setFont(new Font("Arial", Font.BOLD, 16));
+        startFrame.add(welcomeLabel, BorderLayout.CENTER);
+
+        JButton startButton = new JButton("ابدأ");
+        startButton.setBackground(Color.BLUE);
+        startButton.setForeground(Color.WHITE);
+        startButton.setFont(new Font("Arial", Font.BOLD, 14));
+        startFrame.add(startButton, BorderLayout.SOUTH);
+
+        startButton.addActionListener(e -> {
+            startFrame.dispose();
+            showLoginWindow();
+        });
+
+        startFrame.setVisible(true);
+    }
+
+    private void showLoginWindow() {
+        loginFrame = new JFrame("تسجيل الدخول");
+        loginFrame.setSize(300, 200);
+        loginFrame.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
+        loginFrame.setLayout(new BorderLayout());
+
+        JLabel nameLabel = new JLabel("أدخل اسمك:", SwingConstants.CENTER);
+        nameLabel.setFont(new Font("Arial", Font.BOLD, 14));
+        loginFrame.add(nameLabel, BorderLayout.CENTER);
+
+        JTextField nameField = new JTextField();
+        loginFrame.add(nameField, BorderLayout.NORTH);
+
+        JButton connectButton = new JButton("اتصل");
+        connectButton.setBackground(Color.BLUE);
+        connectButton.setForeground(Color.WHITE);
+        connectButton.setFont(new Font("Arial", Font.BOLD, 14));
+        loginFrame.add(connectButton, BorderLayout.SOUTH);
+
+        connectButton.addActionListener(e -> {
+            username = nameField.getText().trim();
+            if (!username.isEmpty()) {
+                loginFrame.dispose();
+                connectToServer();
+                showPlayersWindow();
+            }
+        });
+
+        loginFrame.setVisible(true);
+    }
+
+    private void connectToServer() {
+        try {
+            Socket socket = new Socket(SERVER_IP, SERVER_PORT);
+            out = new PrintWriter(socket.getOutputStream(), true);
+            in = new BufferedReader(new InputStreamReader(socket.getInputStream()));
+
+            out.println(username); // إرسال اسم المستخدم للسيرفر
+
+            new Thread(() -> {
+                try {
+                    String serverMessage;
+                    while ((serverMessage = in.readLine()) != null) {
+                        processMessage(serverMessage);
+                    }
+                } catch (IOException e) {
+                    System.err.println("تم قطع الاتصال بالخادم.");
+                }
+            }).start();
+        } catch (IOException e) {
+            JOptionPane.showMessageDialog(null, "فشل الاتصال بالخادم!", "خطأ", JOptionPane.ERROR_MESSAGE);
+        }
+    }
+
+    private void showPlayersWindow() {
+        playersFrame = new JFrame("اللاعبين المتصلين");
+        playersFrame.setSize(400, 300);
+        playersFrame.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
+        playersFrame.setLayout(new BorderLayout());
+
+        playerListModel = new DefaultListModel<>();
+        playerList = new JList<>(playerListModel);
+        playerList.setBackground(Color.LIGHT_GRAY);
+        playerList.setFont(new Font("Arial", Font.BOLD, 14));
+        JScrollPane playersScrollPane = new JScrollPane(playerList);
+        playersScrollPane.setPreferredSize(new Dimension(150, 0));
+        playersFrame.add(playersScrollPane, BorderLayout.CENTER);
+
+        JButton playButton = new JButton("ابدأ اللعب");
+        playButton.setBackground(Color.BLUE);
+        playButton.setForeground(Color.WHITE);
+        playButton.setFont(new Font("Arial", Font.BOLD, 14));
+        playersFrame.add(playButton, BorderLayout.SOUTH);
+
+        playButton.addActionListener(e -> {
+            sendPlayRequest();
+            playersFrame.dispose();
+            showWaitingRoom();
+        });
+
+        playersFrame.setVisible(true);
+    }
+
+    private void showWaitingRoom() {
+        waitingRoomFrame = new JFrame("غرفة الانتظار");
+        waitingRoomFrame.setSize(400, 300);
+        waitingRoomFrame.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
+        waitingRoomFrame.setLayout(new BorderLayout());
+
+        waitingRoomListModel = new DefaultListModel<>();
+        waitingRoomList = new JList<>(waitingRoomListModel);
+        waitingRoomList.setBackground(Color.LIGHT_GRAY);
+        waitingRoomList.setFont(new Font("Arial", Font.BOLD, 14));
+        JScrollPane waitingScrollPane = new JScrollPane(waitingRoomList);
+        waitingScrollPane.setPreferredSize(new Dimension(150, 0));
+        waitingRoomFrame.add(waitingScrollPane, BorderLayout.CENTER);
+
+        waitingRoomFrame.setVisible(true);
+    }
+
+    private void processMessage(String message) {
+        if (message.startsWith("PLAYERS:")) {
+            updatePlayersList(message.substring(8).trim());
+        } else if (message.startsWith("WAITING ROOM:")) {
+            updateWaitingRoomList(message.substring(13).trim());
+        } else if (message.startsWith("QUESTION:")) {
+            String question = message.substring(9).trim();
+            showQuestionDialog(question);
+        } else if (message.startsWith("SCORES:")) {
+            String scores = message.substring(7).trim();
+            showScores(scores);
+        } else if (message.equals("GAME_OVER")) {
+            JOptionPane.showMessageDialog(null, "انتهت اللعبة! شكراً لمشاركتك.");
+        }
+    }
+
+    private void showQuestionDialog(String question) {
+        questionFrame = new JFrame("سؤال جديد");
+        questionFrame.setSize(600, 350);
+        questionFrame.setLayout(new BorderLayout());
+
+        // منطقة السكور فوق يمين
+        JPanel topPanel = new JPanel(new BorderLayout());
+        scoresArea = new JTextArea();
+        scoresArea.setEditable(false);
+        scoresArea.setFont(new Font("Arial", Font.BOLD, 14));
+        JScrollPane scrollPane = new JScrollPane(scoresArea);
+        topPanel.add(scrollPane, BorderLayout.EAST);
+        questionFrame.add(topPanel, BorderLayout.NORTH);
+
+        JLabel questionLabel = new JLabel(question, SwingConstants.CENTER);
+        questionLabel.setFont(new Font("Arial", Font.BOLD, 20));
+        questionFrame.add(questionLabel, BorderLayout.CENTER);
+
+        JPanel buttonPanel = new JPanel();
+        JButton trueButton = new JButton("صح");
+        JButton falseButton = new JButton("خطأ");
+        buttonPanel.add(trueButton);
+        buttonPanel.add(falseButton);
+        questionFrame.add(buttonPanel, BorderLayout.SOUTH);
+
+        trueButton.addActionListener(e -> {
+            sendAnswer("صح");
+            disableAnswerButtons(trueButton, falseButton);
+        });
+
+        falseButton.addActionListener(e -> {
+            sendAnswer("خطأ");
+            disableAnswerButtons(trueButton, falseButton);
+        });
+
+        questionFrame.setLocationRelativeTo(null);
+        questionFrame.setVisible(true);
+    }
+
+    private void disableAnswerButtons(JButton trueButton, JButton falseButton) {
+        trueButton.setEnabled(false);
+        falseButton.setEnabled(false);
+    }
+
+    private void sendAnswer(String answer) {
+        if (out != null) {
+            out.println("ANSWER:" + answer);
+        }
+    }
+
+    private void showScores(String scores) {
+        if (scoresArea != null) {
+            scoresArea.setText("");
+            String[] players = scores.split(",");
+            for (String playerScore : players) {
+                scoresArea.append(playerScore.trim() + "\n");
+            }
+        }
+    }
+
+    private void updatePlayersList(String players) {
+        SwingUtilities.invokeLater(() -> {
+            playerListModel.clear();
+            for (String player : players.split(",")) {
+                if (!player.trim().isEmpty()) {
+                    playerListModel.addElement(player.trim());
+                }
+            }
+        });
+    }
+
+    private void updateWaitingRoomList(String players) {
+        SwingUtilities.invokeLater(() -> {
+            waitingRoomListModel.clear();
+            for (String player : players.split(",")) {
+                if (!player.trim().isEmpty()) {
+                    waitingRoomListModel.addElement(player.trim());
+                }
+            }
+        });
+    }
+
+    private void sendPlayRequest() {
+        if (out != null) {
+            out.println("play");
+        }
+    }
+
+    public static void main(String[] args) {
+        SwingUtilities.invokeLater(Client::new);
+    }
+}
