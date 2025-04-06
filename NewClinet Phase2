@@ -1,0 +1,123 @@
+import java.io.*;
+import java.net.Socket;
+import java.util.List;
+import java.util.Timer;
+import java.util.TimerTask;
+
+public class NewClient implements Runnable {
+    private Socket socket;
+    private BufferedReader in;
+    private PrintWriter out;
+    private String username;
+
+    private List<String> questions;
+    private List<String> correctAnswers;
+    private int currentQuestionIndex = 0;
+    private int score = 0;
+    private Timer questionTimer;
+
+    public NewClient(Socket socket) {
+        this.socket = socket;
+        try {
+            in = new BufferedReader(new InputStreamReader(socket.getInputStream(), "UTF-8"));
+            out = new PrintWriter(new OutputStreamWriter(socket.getOutputStream(), "UTF-8"), true);
+            username = in.readLine();
+            System.out.println("New client username: " + username);
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+    }
+
+    public String getUsername() {
+        return username;
+    }
+
+    public int getScore() {
+        return score;
+    }
+
+    public void sendMessage(String message) {
+        out.println(message);
+    }
+
+    @Override
+    public void run() {
+        try {
+            String message;
+            while ((message = in.readLine()) != null) {
+                System.out.println("Received from " + username + ": " + message);
+                processClientMessage(message);
+            }
+        } catch (IOException e) {
+            System.out.println("Client " + username + " disconnected.");
+        } finally {
+            NewServer.removePlayer(this);
+            try {
+                socket.close();
+            } catch (IOException e) {
+                e.printStackTrace();
+            }
+        }
+    }
+
+    private void processClientMessage(String message) {
+        if (message.equalsIgnoreCase("play")) {
+            NewServer.handlePlayRequest(this);
+        } else if (message.startsWith("ANSWER:")) {
+            handleAnswer(message.substring(7).trim());
+        }
+    }
+
+    public void startGame(List<String> questions, List<String> answers) {
+        this.questions = questions;
+        this.correctAnswers = answers;
+        this.currentQuestionIndex = 0;
+        sendMessage("START_GAME");
+        askNextQuestion();
+    }
+
+    private void askNextQuestion() {
+        if (currentQuestionIndex >= questions.size()) {
+            endGame();
+            return;
+        }
+        sendMessage("QUESTION: " + questions.get(currentQuestionIndex));
+        NewServer.sendScoresToAll(); // 🔥 نرسل السكور بعد كل سؤال
+        startQuestionTimer();
+    }
+
+    private void startQuestionTimer() {
+        if (questionTimer != null) {
+            questionTimer.cancel();
+        }
+        questionTimer = new Timer();
+        questionTimer.schedule(new TimerTask() {
+            @Override
+            public void run() {
+                handleAnswer(""); // إذا الوقت انتهى
+            }
+        }, 15000); // 15 ثانية
+    }
+
+    private void handleAnswer(String playerAnswer) {
+        if (questionTimer != null) {
+            questionTimer.cancel();
+        }
+        if (currentQuestionIndex >= questions.size()) return;
+
+        String correctAnswer = correctAnswers.get(currentQuestionIndex);
+
+        if (playerAnswer.equalsIgnoreCase(correctAnswer)) {
+            score++;
+        }
+
+        currentQuestionIndex++;
+        NewServer.sendScoresToAll(); // 🔥 نرسل السكور عند كل إجابة
+        askNextQuestion();
+    }
+
+    private void endGame() {
+        sendMessage("GAME_OVER");
+        NewServer.sendScoresToAll();
+    }
+}
