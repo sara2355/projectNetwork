@@ -1,0 +1,390 @@
+import java.io.BufferedReader;
+import java.io.IOException;
+import java.io.InputStreamReader;
+import java.io.PrintWriter;
+import java.net.Socket;
+import javax.swing.*;
+import java.awt.*;
+
+public class Client {
+    private static final String SERVER_IP = "localhost";
+    private static final int SERVER_PORT = 9090;
+    
+    private JFrame startFrame, loginFrame, playersFrame, waitingRoomFrame, gameFrame;
+    private DefaultListModel<String> playerListModel, waitingRoomListModel, scoreModel;
+    private JList<String> playerList, waitingRoomList, scoreList;
+    private PrintWriter out;
+    private BufferedReader in;
+    private String username;
+private JLabel waitingRoomTimerLabel;
+
+  private JLabel questionLabel;
+private JPanel answerButtonsPanel;
+
+
+    public Client() {
+        showStartWindow();
+    }
+//start gui
+    
+    
+    
+    // نافذة البداية
+    private void showStartWindow() {
+        startFrame = new JFrame("ابدأ اللعبة");
+        startFrame.setSize(300, 200);
+        startFrame.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
+        startFrame.setLayout(new BorderLayout());
+        
+        JLabel welcomeLabel = new JLabel("مرحبًا بك في لعبة خُزعبَلَة!", SwingConstants.CENTER);
+        welcomeLabel.setFont(new Font("Arial", Font.BOLD, 16));
+        startFrame.add(welcomeLabel, BorderLayout.CENTER);
+        
+        JButton startButton = new JButton("ابدأ");
+        startButton.setBackground(Color.BLUE);
+        startButton.setForeground(Color.WHITE);
+        startButton.setFont(new Font("Arial", Font.BOLD, 14));
+        startFrame.add(startButton, BorderLayout.SOUTH);
+        
+        startButton.addActionListener(e -> {
+            startFrame.dispose();
+            showLoginWindow();
+        });
+        
+        startFrame.setVisible(true);
+    }
+
+    // نافذة تسجيل الدخول
+    private void showLoginWindow() {
+        loginFrame = new JFrame("تسجيل الدخول");
+        loginFrame.setSize(300, 200);
+        loginFrame.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
+        loginFrame.setLayout(new BorderLayout());
+        
+        JLabel nameLabel = new JLabel("أدخل اسمك:", SwingConstants.CENTER);
+        nameLabel.setFont(new Font("Arial", Font.BOLD, 14));
+        loginFrame.add(nameLabel, BorderLayout.CENTER);
+        
+        JTextField nameField = new JTextField();
+        loginFrame.add(nameField, BorderLayout.NORTH);
+        
+        JButton connectButton = new JButton("اتصل");
+        connectButton.setBackground(Color.BLUE);
+        connectButton.setForeground(Color.WHITE);
+        connectButton.setFont(new Font("Arial", Font.BOLD, 14));
+        loginFrame.add(connectButton, BorderLayout.SOUTH);
+        
+        connectButton.addActionListener(e -> {
+            username = nameField.getText().trim();
+            if (!username.isEmpty()) {
+                loginFrame.dispose();
+                connectToServer();
+                showPlayersWindow();
+            }
+        });
+        
+        loginFrame.setVisible(true);
+    }
+
+    // الاتصال بالسيرفر
+    private void connectToServer() {
+        try {
+            Socket socket = new Socket(SERVER_IP, SERVER_PORT);
+            out = new PrintWriter(socket.getOutputStream(), true);
+            in  = new BufferedReader(new InputStreamReader(socket.getInputStream()));
+            
+            // إرسال اسم اللاعب للسيرفر
+            out.println(username);
+            
+            // بدء Thread للاستماع لرسائل السيرفر
+            new Thread(() -> {
+                try {
+                    String serverMessage;
+                    while ((serverMessage = in.readLine()) != null) {
+                        processMessage(serverMessage);
+                    }
+                } catch (IOException e) {
+                    System.err.println("تم قطع الاتصال بالخادم.");
+                }
+            }).start();
+        } catch (IOException e) {
+            JOptionPane.showMessageDialog(null, "فشل الاتصال بالخادم!", "خطأ", JOptionPane.ERROR_MESSAGE);
+        }
+    }
+
+    // نافذة اللاعبين المتصلين
+    private void showPlayersWindow() {
+        playersFrame = new JFrame("اللاعبين المتصلين");
+        playersFrame.setSize(400, 300);
+        playersFrame.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
+        playersFrame.setLayout(new BorderLayout());
+        
+        // إنشاء نموذج قائمة اللاعبين
+        playerListModel = new DefaultListModel<>();
+        playerList = new JList<>(playerListModel);
+        playerList.setBackground(Color.LIGHT_GRAY);
+        playerList.setFont(new Font("Arial", Font.BOLD, 14));
+        JScrollPane playersScrollPane = new JScrollPane(playerList);
+        playersScrollPane.setPreferredSize(new Dimension(150, 0));
+        playersFrame.add(playersScrollPane, BorderLayout.CENTER);
+        
+        JButton playButton = new JButton("ابدأ اللعب");
+        playButton.setBackground(Color.BLUE);
+        playButton.setForeground(Color.WHITE);
+        playButton.setFont(new Font("Arial", Font.BOLD, 14));
+        playersFrame.add(playButton, BorderLayout.SOUTH);
+        
+        // عند الضغط على "ابدأ اللعب" نرسل رسالة "play" للسيرفر ونفتح نافذة غرفة الانتظار
+        playButton.addActionListener(e -> {
+            sendPlayRequest();
+            playersFrame.dispose();
+            showWaitingRoom();
+        });
+        
+        playersFrame.setVisible(true);
+    }
+
+    // نافذة غرفة الانتظار
+    private void showWaitingRoom() {
+    waitingRoomFrame = new JFrame("غرفة الانتظار");
+    waitingRoomFrame.setSize(400, 300);
+    waitingRoomFrame.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
+    waitingRoomFrame.setLayout(new BorderLayout());
+
+    // 🕒 التايمر في الأعلى
+    waitingRoomTimerLabel = new JLabel("يبدأ خلال ... ثانية", SwingConstants.CENTER);
+    waitingRoomTimerLabel.setFont(new Font("Arial", Font.BOLD, 16));
+    waitingRoomTimerLabel.setForeground(Color.BLUE);
+    waitingRoomFrame.add(waitingRoomTimerLabel, BorderLayout.NORTH);
+
+    // قائمة اللاعبين
+    waitingRoomListModel = new DefaultListModel<>();
+    waitingRoomList = new JList<>(waitingRoomListModel);
+    waitingRoomList.setBackground(Color.LIGHT_GRAY);
+    waitingRoomList.setFont(new Font("Arial", Font.BOLD, 14));
+    JScrollPane waitingScrollPane = new JScrollPane(waitingRoomList);
+    waitingRoomFrame.add(waitingScrollPane, BorderLayout.CENTER);
+    waitingRoomFrame.setVisible(true);
+}
+
+   
+
+
+    // إرسال الإجابة إلى السيرفر
+    private void sendAnswer(boolean isCorrect) {
+        if (out != null) {
+            out.println("ANSWER: " + (isCorrect ? "true" : "false"));
+        }
+    }
+
+    // بدء نافذة اللعبة
+  
+private void startGameWindow(String[] players) {
+        gameFrame = new JFrame("🎮 اللعبة");
+        gameFrame.setSize(600, 450);
+        gameFrame.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
+        gameFrame.setLayout(new BorderLayout(10, 10));
+
+        JLabel gameLabel = new JLabel("خزعبله", SwingConstants.CENTER);
+        gameLabel.setFont(new Font("Arial", Font.BOLD, 22));
+        gameFrame.add(gameLabel, BorderLayout.NORTH);
+
+        scoreModel = new DefaultListModel<>();
+        scoreList = new JList<>(scoreModel);
+        scoreList.setFont(new Font("Arial", Font.BOLD, 16));
+        scoreList.setBackground(new Color(250, 250, 250));
+        gameFrame.add(new JScrollPane(scoreList), BorderLayout.WEST);
+
+        for (String player : players) {
+            scoreModel.addElement(player + " - 0");
+        }
+
+        questionLabel = new JLabel("بانتظار السؤال...", SwingConstants.CENTER);
+        questionLabel.setFont(new Font("Arial", Font.BOLD, 18));
+        gameFrame.add(questionLabel, BorderLayout.CENTER);
+
+        answerButtonsPanel = new JPanel(new FlowLayout());
+
+        JButton trueButton = new JButton("✔ صح");
+        styleButton(trueButton, new Color(39, 174, 96));
+        trueButton.addActionListener(e -> {
+            sendAnswer(true);
+            disableAnswerButtons();
+        });
+
+        JButton falseButton = new JButton("✖ خطأ");
+        styleButton(falseButton, new Color(231, 76, 60));
+        falseButton.addActionListener(e -> {
+            sendAnswer(false);
+            disableAnswerButtons();
+        });
+
+        answerButtonsPanel.add(trueButton);
+        answerButtonsPanel.add(falseButton);
+        gameFrame.add(answerButtonsPanel, BorderLayout.SOUTH);
+
+        if (waitingRoomFrame != null) waitingRoomFrame.dispose();
+
+        gameFrame.setLocationRelativeTo(null);
+        gameFrame.setVisible(true);
+    }
+
+    private void styleButton(JButton button, Color color) {
+        button.setBackground(color);
+        button.setForeground(Color.WHITE);
+        button.setFont(new Font("Arial", Font.BOLD, 14));
+        button.setFocusPainted(false);
+        button.setBorder(BorderFactory.createEmptyBorder(10, 20, 10, 20));
+    }
+
+  
+  
+    // تحديث النقاط
+    private void updateScores(String[] scores) {
+        SwingUtilities.invokeLater(() -> {
+            scoreModel.clear();
+            for (String s : scores) {
+                scoreModel.addElement(s);
+            }
+        });
+    }
+
+    //end gui 
+    
+    
+    
+    
+    
+    
+    
+    
+    // معالجة الرسائل الواردة من السيرفر
+    private void processMessage(String message) {
+        System.out.println("Received from server: " + message);
+
+        if (message.startsWith("PLAYERS:")) {
+            String players = message.substring(8).trim();
+            updatePlayersList(players);
+        } else if (message.startsWith("WAITING ROOM:")) {
+            String players = message.substring(13).trim();
+            updateWaitingRoomList(players);
+        } else if (message.startsWith("START_GAME_WITH:")) {
+            String playersStr = message.substring("START_GAME_WITH:".length()).trim();
+            String[] players = playersStr.split(",");
+            startGameWindow(players);
+            
+            
+            
+            
+        }else if (message.startsWith("QUESTION:")) {
+    String question = message.substring("QUESTION:".length()).trim();
+    SwingUtilities.invokeLater(() -> {
+        questionLabel.setText(question);
+        enableAnswerButtons();
+    });
+
+
+        } else if (message.startsWith("SCORE_UPDATE:")) {
+            String[] scores = message.substring("SCORE_UPDATE:".length()).trim().split(",");
+            updateScores(scores);
+        } else if (message.startsWith("WINNER:")) {
+            String winner = message.substring(7).trim();
+            
+            
+// show the winner 
+    SwingUtilities.invokeLater(() -> {
+        // نحذف كل شيء من نافذة اللعبة
+        gameFrame.getContentPane().removeAll();
+
+        // نعرض الفائز
+        JLabel winnerLabel = new JLabel("🎉 الفائز هو: " + winner + " 🎉", SwingConstants.CENTER);
+        winnerLabel.setFont(new Font("Arial", Font.BOLD, 30));
+        winnerLabel.setForeground(Color.GREEN);
+
+        gameFrame.getContentPane().add(winnerLabel, BorderLayout.CENTER);
+
+        // إعادة رسم وتحديث الواجهة
+        gameFrame.revalidate();
+        gameFrame.repaint();
+    });
+}   
+        else if (message.startsWith("TIMER:")) {
+    int seconds = Integer.parseInt(message.substring("TIMER:".length()).trim());
+    startWaitingRoomTimer(seconds);
+}
+
+    }
+    
+    private void enableAnswerButtons() {
+    for (Component comp : answerButtonsPanel.getComponents()) {
+        comp.setEnabled(true);
+    }
+}
+
+private void disableAnswerButtons() {
+    for (Component comp : answerButtonsPanel.getComponents()) {
+        comp.setEnabled(false);
+    }
+}
+
+
+    // تحديث قائمة اللاعبين المتصلين
+    private void updatePlayersList(String players) {
+        SwingUtilities.invokeLater(() -> {
+            playerListModel.clear();
+            String[] playerNames = players.split(",");
+            for (String player : playerNames) {
+                player = player.trim();
+                if (!player.isEmpty()) {
+                    playerListModel.addElement(player);
+                }
+            }
+        });
+    }
+
+    // تحديث قائمة غرفة الانتظار
+    private void updateWaitingRoomList(String players) {
+        SwingUtilities.invokeLater(() -> {
+            waitingRoomListModel.clear();
+            String[] playerNames = players.split(",");
+            for (String player : playerNames) {
+                player = player.trim();
+                if (!player.isEmpty()) {
+                    waitingRoomListModel.addElement(player);
+                }
+            }
+        });
+    }
+
+    
+    
+    
+    private void startWaitingRoomTimer(int seconds) {
+    new Thread(() -> {
+        try {
+            for (int i = seconds; i >= 0; i--) {
+                final int timeLeft = i;
+                SwingUtilities.invokeLater(() -> 
+                    waitingRoomTimerLabel.setText("يبدأ خلال " + timeLeft + " ثانية")
+                );
+                Thread.sleep(1000);
+            }
+        } catch (InterruptedException ex) {
+            ex.printStackTrace();
+        }
+    }).start();
+}
+
+    // إرسال طلب اللعب إلى السيرفر
+    private void sendPlayRequest() {
+        if (out != null) {
+            out.println("play");
+        } else {
+            System.err.println("فشل في إرسال طلب اللعب: out غير مهيأ.");
+        }
+    }
+
+    public static void main(String[] args) {
+        SwingUtilities.invokeLater(() -> new Client());
+    }
+}
