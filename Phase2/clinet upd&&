@@ -132,44 +132,18 @@ private JPanel answerButtonsPanel;
         playButton.setBackground(Color.BLUE);
         playButton.setForeground(Color.WHITE);
         playButton.setFont(new Font("Arial", Font.BOLD, 14));
-       
+        playersFrame.add(playButton, BorderLayout.SOUTH);
         
-        // عند الضغط على "ابدأ اللعب" نرسل رسالة "play" للسيرفر ونفتح نافذة غرفة الانتظار
+        
         playButton.addActionListener(e -> {
             sendPlayRequest();
             playersFrame.dispose();
             showWaitingRoom();
         });
         
-    JPanel bottomPanel = new JPanel(new BorderLayout());
-
-// زر ابدأ اللعب على اليمين
-JPanel rightPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT));
-rightPanel.add(playButton);
-
-// زر خروج على اليسار
-JPanel leftPanel = new JPanel(new FlowLayout(FlowLayout.LEFT));
-JButton leaveButton = new JButton("خروج");
-leaveButton.setBackground(Color.RED);
-leaveButton.setForeground(Color.WHITE);
-leaveButton.setFont(new Font("Arial", Font.BOLD, 14));
-leaveButton.setPreferredSize(new Dimension(80, 30));
-leaveButton.addActionListener(e -> sendLeaveRequest());
-leftPanel.add(leaveButton);
-
-// أضف الاثنين للبوتوم بانل
-bottomPanel.add(leftPanel, BorderLayout.WEST);
-bottomPanel.add(rightPanel, BorderLayout.EAST);
-
-// أخيرًا أضف البوتوم بانل للنافذة
-playersFrame.add(bottomPanel, BorderLayout.SOUTH);
-
-playersFrame.setVisible(true); 
-
-        
-
-
+        playersFrame.setVisible(true);
     }
+
 
     // نافذة غرفة الانتظار
     private void showWaitingRoom() {
@@ -194,7 +168,7 @@ playersFrame.setVisible(true);
     waitingRoomFrame.setVisible(true);
     
   
-addLeaveButton(waitingRoomFrame);
+
 
 
 }
@@ -274,7 +248,7 @@ private void startGameWindow(String[] players) {
     if (waitingRoomFrame != null) waitingRoomFrame.dispose();
 
     gameFrame.setLocationRelativeTo(null);
-    gameFrame.setVisible(true); //  فقط مرة واحدة بعد كل شيء
+    gameFrame.setVisible(true); // 👈 فقط مرة واحدة بعد كل شيء
 }
 
 
@@ -462,5 +436,3 @@ private void addLeaveButton(JFrame frame) {
         SwingUtilities.invokeLater(() -> new Client());
     }
 }
-
-
