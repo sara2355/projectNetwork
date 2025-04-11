@@ -463,7 +463,4 @@ private void addLeaveButton(JFrame frame) {
     }
 }
 
-    public static void main(String[] args) {
-        SwingUtilities.invokeLater(() -> new Client());
-    }
-}
+
